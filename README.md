@@ -18,9 +18,13 @@ all four services running simultaneously with **1.0–1.1GB of RAM headroom**, f
 ## The three rules that make it work
 
 1. **GDM stays off.** `sudo systemctl stop gdm.service` frees ~1.5GB. With the GUI on, this stack OOMs.
-2. **Launch every llama-server with `setsid`** (via `execute_code`, never `terminal(background=true)`).
-   The hermes-worker cgroup caps a single process at ~4.7GB; Granite needs ~4.0GB just for weights+KV.
-   setsid launches land in the gateway cgroup instead and survive.
+2. **Launch llama-server from a foreground `terminal` or `execute_code` — never `terminal(background=true)`.**
+   `background=true` places the process in a `hermes-worker-proc_*.scope` cgroup capped at ~3.7 GiB (3.99 GB,
+   measured `memory.max=3988422656`) — smaller than Granite's ~4.0 GB footprint, so it is memcg-OOM-killed at
+   load even with system RAM free. Foreground `terminal` and `execute_code` both run in the unlimited
+   `hermes-gateway.service` cgroup (`memory.max=max`). `setsid` / `start_new_session` only detaches the session
+   so the server survives the launch command returning — it does NOT move the process out of its cgroup;
+   cgroup placement is inherited from whichever context you launch from.
 3. **q8_0 KV cache, not f16.** At 32K context the f16 KV cache leaves 96MB of headroom (one allocation
    from OOM); q8_0 leaves 1.38GB. Same speed, near-lossless quality.
 

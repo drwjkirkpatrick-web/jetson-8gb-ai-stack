@@ -60,10 +60,14 @@ wget -O ~/models/embeddinggemma-2/embeddinggemma-2-UD-Q4_K_XL.gguf \
 
 ## 4. Launch the servers
 
-**Critical: use the repo's launch scripts — they include `setsid`.**
-A server launched from an agent/terminal background call gets placed in a memory cgroup
-capped at ~4.7GB; Granite needs ~4.0GB of that for weights+KV and gets OOM-killed during load.
-`setsid` detaches the process into the gateway cgroup, which has no such cap.
+**Critical: launch the scripts from a foreground `terminal` (or `execute_code`) — never
+`terminal(background=true)`.** A `background=true` launch puts the server in a
+`hermes-worker-proc_*.scope` cgroup capped at ~3.7 GiB / 3.99 GB (`memory.max=3988422656`) —
+smaller than Granite's ~4.0 GB footprint, so it is memcg-OOM-killed during load even with
+system RAM free. Foreground `terminal` and `execute_code` both run in the unlimited
+`hermes-gateway.service` cgroup (`memory.max=max`). The `setsid` in the launch scripts
+detaches the session so the server survives the script exiting — it does NOT move the
+process to a different cgroup; cgroup placement is inherited from the launching context.
 
 ```bash
 cd ~/projects/jetson-8gb-ai-stack
@@ -150,7 +154,7 @@ python3 tests/test_stack.py
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Server dies during model load | launched inside hermes-worker cgroup (~4.7GB cap) | relaunch with `setsid` (use repo scripts) |
+| Server dies during model load | launched inside hermes-worker cgroup (3.99 GB cap) | launch from foreground terminal or execute_code, never background=true |
 | 96MB free, everything OOMs | f16 KV at 32K | use q8_0 KV (`-ctk q8_0 -ctv q8_0`) |
 | "unknown architecture: gemma-embedding2" | llama.cpp too old | `git pull` + rebuild, need build ≥ 1098 |
 | Embeddings all ~0.85 cross-similarity | wrong pooling | add `--pooling mean` |
